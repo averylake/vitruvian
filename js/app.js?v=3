@@ -1,0 +1,821 @@
+/* ============================================================
+   THE VITRUVIAN LENS — Scroll Engine & Interactions
+   Enhanced with Shopify-inspired techniques
+   ============================================================ */
+
+(function () {
+    'use strict';
+
+    // --- Reduced Motion Detection ---
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // --- Lenis Smooth Scroll ---
+    let lenis = null;
+    if (typeof Lenis !== 'undefined' && !prefersReducedMotion) {
+        lenis = new Lenis({
+            duration: 1.2,
+            easing: function (t) {
+                return Math.min(1, 1.001 - Math.pow(2, -10 * t));
+            },
+            orientation: 'vertical',
+            smoothWheel: true,
+            wheelMultiplier: 1
+        });
+
+        // Lenis ↔ GSAP ScrollTrigger sync
+        lenis.on('scroll', function () {
+            if (typeof ScrollTrigger !== 'undefined') {
+                ScrollTrigger.update();
+            }
+        });
+
+        // rAF loop for Lenis
+        function raf(time) {
+            lenis.raf(time);
+            requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+
+        // Override scrollTo for era nav dots to use Lenis
+        window.__lenisScrollTo = function (target) {
+            lenis.scrollTo(target, { offset: 0, duration: 1.2 });
+        };
+    }
+
+    // --- Grain Noise Canvas (Enhanced) ---
+    (function initGrain() {
+        const canvas = document.getElementById('grainCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let w, h;
+
+        function resize() {
+            w = canvas.width = canvas.offsetWidth;
+            h = canvas.height = canvas.offsetHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function drawGrain() {
+            const imageData = ctx.createImageData(w, h);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const v = Math.random() * 255;
+                data[i] = v;
+                data[i + 1] = v;
+                data[i + 2] = v;
+                data[i + 3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Draw once, then redraw slowly for subtle movement
+        drawGrain();
+        setInterval(drawGrain, 120);
+    })();
+
+    // --- Enhanced Grain: SVG filter overlay (second layer) ---
+    (function initSVGGrain() {
+        // Add a fixed SVG noise overlay for richer texture
+        const grainOverlay = document.createElement('div');
+        grainOverlay.className = 'grain-overlay-svg';
+        grainOverlay.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(grainOverlay);
+    })();
+
+    // --- Split Title (removed — new prologue uses CSS fade-up) ---
+
+    gsap.registerPlugin(ScrollTrigger);
+
+    // If Lenis is active, tell GSAP to use it as the scroller proxy
+    if (lenis) {
+        gsap.ticker.add(function (time) {
+            lenis.raf(time * 1000);
+        });
+        gsap.ticker.lagSmoothing(0);
+    }
+
+    // --- DOM References ---
+    const progressBar = document.getElementById('progressBar');
+    const eraNav = document.getElementById('eraNav');
+    const navDots = document.querySelectorAll('.era-nav__item');
+    const eras = document.querySelectorAll('.era');
+    const revealElements = document.querySelectorAll('[data-reveal]');
+
+    // --- Progress Bar ---
+    gsap.to(progressBar, {
+        scaleX: 1,
+        ease: 'none',
+        scrollTrigger: {
+            trigger: document.body,
+            start: 'top top',
+            end: 'bottom bottom',
+            scrub: 0.3
+        }
+    });
+
+    // --- Show Era Nav after scrolling past prologue ---
+    ScrollTrigger.create({
+        trigger: '#era-the-word',
+        start: 'top 80%',
+        onEnter: () => eraNav.classList.add('visible'),
+        onLeaveBack: () => eraNav.classList.remove('visible')
+    });
+
+    // --- Era Navigation Items ---
+    navDots.forEach(dot => {
+        const eraId = dot.dataset.era;
+        const section = document.getElementById('era-' + eraId);
+        if (!section) return;
+
+        // Click to scroll (use Lenis if available)
+        dot.addEventListener('click', () => {
+            if (window.__lenisScrollTo) {
+                window.__lenisScrollTo(section);
+            } else {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+
+        // Active state
+        ScrollTrigger.create({
+            trigger: section,
+            start: 'top 60%',
+            end: 'bottom 40%',
+            onToggle: self => {
+                if (self.isActive) {
+                    navDots.forEach(d => d.classList.remove('active'));
+                    dot.classList.add('active');
+                }
+            }
+        });
+    });
+
+    // --- Scroll-triggered reveals ---
+    revealElements.forEach((el, i) => {
+        ScrollTrigger.create({
+            trigger: el,
+            start: 'top 85%',
+            once: true,
+            onEnter: () => {
+                el.classList.add('visible');
+            }
+        });
+    });
+
+    // --- Vitruvian Ghost: scroll-driven line-draw ---
+    // Deferred to window 'load' so GSAP calculates positions after the full
+    // page layout has settled (Three.js canvases, images, prelude, etc.)
+    window.addEventListener('load', function () {
+        setTimeout(function () {
+            ScrollTrigger.refresh(true);
+
+            const ghostCircle = document.querySelector('.vitruvian-ghost__circle');
+            const ghostSquare = document.querySelector('.vitruvian-ghost__square');
+            if (ghostCircle && ghostSquare && !prefersReducedMotion) {
+                const ghostTL = gsap.timeline({
+                    scrollTrigger: {
+                        trigger: '#vitruvianGhost',
+                        start: 'top 85%',
+                        end: 'top 30%',
+                        scrub: 0.6
+                    }
+                });
+                // Circle draws first (0% → 60% of scroll range)
+                ghostTL.to(ghostCircle, {
+                    strokeDashoffset: 0,
+                    duration: 0.6,
+                    ease: 'power2.inOut'
+                });
+                // Square draws second (60% → 100% of scroll range)
+                ghostTL.to(ghostSquare, {
+                    strokeDashoffset: 0,
+                    duration: 0.4,
+                    ease: 'power2.inOut'
+                });
+            }
+        }, 500);
+    });
+
+    // --- Heading Text Reveals (word-by-word) ---
+    (function initHeadingReveals() {
+        if (prefersReducedMotion) return;
+
+        const headings = document.querySelectorAll('.era__title');
+        headings.forEach(heading => {
+            // Split text into words wrapped in spans
+            const text = heading.textContent.trim();
+            const words = text.split(/\s+/);
+            heading.textContent = '';
+            heading.classList.add('title-reveal');
+
+            words.forEach((word, i) => {
+                const span = document.createElement('span');
+                span.className = 'title-reveal__word';
+                span.textContent = word;
+                span.style.transitionDelay = (i * 0.08) + 's';
+                heading.appendChild(span);
+                // Add space between words
+                if (i < words.length - 1) {
+                    heading.appendChild(document.createTextNode(' '));
+                }
+            });
+
+            // Trigger reveal on scroll using GSAP
+            ScrollTrigger.create({
+                trigger: heading,
+                start: 'top 80%',
+                once: true,
+                onEnter: () => {
+                    heading.classList.add('title-revealed');
+                }
+            });
+        });
+    })();
+
+    // --- Era 2: Struggle overlays appear on scroll ---
+    const overlay1 = document.getElementById('overlay1');
+    const overlay2 = document.getElementById('overlay2');
+    const struggleVerdict = document.querySelector('.struggle-verdict');
+
+    if (overlay1 && overlay2) {
+        ScrollTrigger.create({
+            trigger: '.struggle-grid',
+            start: 'top 50%',
+            once: true,
+            onEnter: () => {
+                setTimeout(() => overlay1.classList.add('visible'), 600);
+                setTimeout(() => overlay2.classList.add('visible'), 900);
+                if (struggleVerdict) {
+                    setTimeout(() => struggleVerdict.classList.add('visible'), 1400);
+                }
+            }
+        });
+    }
+
+    // --- Era 3: Geometry Toggle ---
+    const toggleGeometry = document.getElementById('toggleGeometry');
+    const toggleMirror = document.getElementById('toggleMirror');
+    const geometryOverlay = document.getElementById('geometryOverlay');
+    const geometryLegend = document.getElementById('geometryLegend');
+    const mirrorText = document.getElementById('mirrorText');
+
+    if (toggleGeometry) {
+        toggleGeometry.addEventListener('click', () => {
+            const isActive = toggleGeometry.classList.toggle('active');
+            if (isActive) {
+                geometryOverlay.classList.add('visible');
+                geometryLegend.classList.add('visible');
+            } else {
+                geometryOverlay.classList.remove('visible');
+                geometryLegend.classList.remove('visible');
+            }
+        });
+    }
+
+    if (toggleMirror) {
+        toggleMirror.addEventListener('click', () => {
+            const isActive = toggleMirror.classList.toggle('active');
+            mirrorText.style.display = isActive ? 'block' : 'none';
+            if (isActive) {
+                mirrorText.classList.add('visible');
+                requestAnimationFrame(() => {
+                    mirrorText.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+        });
+    }
+
+    // --- Latin text tooltip (tap to translate) ---
+    document.querySelectorAll('.latin-block').forEach(block => {
+        block.addEventListener('click', () => {
+            // Close other tooltips
+            document.querySelectorAll('.latin-block.show-tooltip').forEach(b => {
+                if (b !== block) b.classList.remove('show-tooltip');
+            });
+            block.classList.toggle('show-tooltip');
+        });
+    });
+
+    // Close tooltips on outside click
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.latin-block')) {
+            document.querySelectorAll('.latin-block.show-tooltip').forEach(b => {
+                b.classList.remove('show-tooltip');
+            });
+        }
+    });
+
+    // --- Era 4: Modulor Toggles ---
+    const toggleProportions = document.getElementById('toggleProportions');
+    const toggleCorbusier = document.getElementById('toggleCorbusier');
+    const proportionsOverlay = document.querySelector('.modulor-proportions-overlay');
+    const corbusierPanel = document.getElementById('corbusierPanel');
+
+    if (toggleProportions && proportionsOverlay) {
+        toggleProportions.addEventListener('click', () => {
+            const isActive = toggleProportions.classList.toggle('active');
+            if (isActive) {
+                proportionsOverlay.classList.add('visible');
+            } else {
+                proportionsOverlay.classList.remove('visible');
+            }
+        });
+    }
+
+    if (toggleCorbusier && corbusierPanel) {
+        toggleCorbusier.addEventListener('click', () => {
+            const isActive = toggleCorbusier.classList.toggle('active');
+            corbusierPanel.style.display = isActive ? 'block' : 'none';
+            if (isActive) {
+                requestAnimationFrame(() => {
+                    corbusierPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+        });
+    }
+
+    // --- The Crack: Nussbaum Toggle ---
+    const toggleNussbaum = document.getElementById('toggleNussbaum');
+    const nussbaumPanel = document.getElementById('nussbaumPanel');
+
+    if (toggleNussbaum && nussbaumPanel) {
+        toggleNussbaum.addEventListener('click', () => {
+            const isActive = toggleNussbaum.classList.toggle('active');
+            nussbaumPanel.style.display = isActive ? 'block' : 'none';
+            if (isActive) {
+                requestAnimationFrame(() => {
+                    nussbaumPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+        });
+    }
+
+    // --- Era 5: Signal Toggles ---
+    const toggleFramework = document.getElementById('toggleFramework');
+    const toggleAndy = document.getElementById('toggleAndy');
+    const frameworkPanel = document.getElementById('frameworkPanel');
+    const andyPanel = document.getElementById('andyPanel');
+
+    if (toggleFramework && frameworkPanel) {
+        toggleFramework.addEventListener('click', () => {
+            const isActive = toggleFramework.classList.toggle('active');
+            frameworkPanel.style.display = isActive ? 'block' : 'none';
+            if (isActive) {
+                requestAnimationFrame(() => {
+                    frameworkPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+        });
+    }
+
+    if (toggleAndy && andyPanel) {
+        toggleAndy.addEventListener('click', () => {
+            const isActive = toggleAndy.classList.toggle('active');
+            andyPanel.style.display = isActive ? 'block' : 'none';
+            if (isActive) {
+                requestAnimationFrame(() => {
+                    andyPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+        });
+    }
+
+    // --- Era 5: Three.js Sphere ---
+    function initSphere() {
+        const container = document.querySelector('.sphere-container');
+        if (!container || typeof THREE === 'undefined') return;
+
+        const canvas = document.getElementById('sphereCanvas');
+        if (!canvas) return;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+        camera.position.z = 3;
+
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setClearColor(0x000000, 0);
+
+        // Gradient sphere: white (top) → black (bottom)
+        const sphereGeometry = new THREE.SphereGeometry(1, 64, 64);
+        const sphereMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                varying vec3 vPosition;
+                void main() {
+                    vPosition = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vPosition;
+                void main() {
+                    float gradient = (vPosition.y + 1.0) / 2.0;
+                    vec3 color = mix(vec3(0.04), vec3(0.95), gradient);
+                    gl_FragColor = vec4(color, 0.9);
+                }
+            `,
+            transparent: true
+        });
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        scene.add(sphere);
+
+        // Wireframe cube
+        const cubeGeometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+        const cubeMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.08
+        });
+        const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+        scene.add(cube);
+
+        // Mouse interaction
+        let mouseX = 0, mouseY = 0;
+        container.addEventListener('mousemove', (e) => {
+            const rect = container.getBoundingClientRect();
+            mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+            mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            sphere.rotation.y += 0.003;
+            cube.rotation.y -= 0.002;
+            cube.rotation.x += 0.001;
+            sphere.rotation.x = mouseY * 0.3;
+            sphere.rotation.z = mouseX * 0.1;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize
+        window.addEventListener('resize', () => {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
+    }
+
+    // Initialize sphere
+    initSphere();
+
+    // --- Era 5: Tiles Grid Reveal ---
+    const tilesGrid = document.getElementById('tilesGrid');
+    if (tilesGrid) {
+        const tiles = tilesGrid.querySelectorAll('.tile');
+
+        ScrollTrigger.create({
+            trigger: tilesGrid,
+            start: 'top 80%',
+            once: true,
+            onEnter: () => {
+                tilesGrid.classList.add('visible');
+                tiles.forEach((tile, i) => {
+                    tile.style.opacity = '0';
+                    tile.style.transform = 'scale(0.8)';
+                    setTimeout(() => {
+                        tile.style.transition = `opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.05}s, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.05}s`;
+                        tile.style.opacity = '1';
+                        tile.style.transform = 'scale(1)';
+                    }, 100);
+                });
+            }
+        });
+
+        // Tile tap interaction (mobile)
+        tiles.forEach(tile => {
+            tile.addEventListener('click', () => {
+                const wasActive = tile.classList.contains('active');
+                tiles.forEach(t => t.classList.remove('active'));
+                if (!wasActive) {
+                    tile.classList.add('active');
+                }
+            });
+        });
+    }
+
+    // --- Era 5: Closing block reveal ---
+    const closingBlock = document.querySelector('.closing-block');
+    if (closingBlock) {
+        ScrollTrigger.create({
+            trigger: closingBlock,
+            start: 'top 85%',
+            once: true,
+            onEnter: () => {
+                closingBlock.classList.add('visible');
+            }
+        });
+    }
+
+    // --- Smooth era background transitions ---
+    // Add a very subtle cross-fade effect between eras
+    eras.forEach(era => {
+        gsap.fromTo(era,
+            { opacity: 0.3 },
+            {
+                opacity: 1,
+                duration: 0.5,
+                scrollTrigger: {
+                    trigger: era,
+                    start: 'top 80%',
+                    end: 'top 30%',
+                    scrub: true
+                }
+            }
+        );
+    });
+
+    // --- Prologue: skip animation if reloaded mid-page ---
+    const prologue = document.getElementById('era-prologue');
+    if (prologue && window.scrollY < 100) {
+        const prologueLines = prologue.querySelectorAll('.text-line');
+        prologueLines.forEach((line, i) => {
+            setTimeout(() => {
+                line.classList.add('visible');
+            }, 800 + (i * 600));
+        });
+    }
+
+    // --- Keyboard navigation ---
+    let currentEraIndex = 0;
+    const eraIds = ['era-prologue', 'era-the-word', 'era-the-struggle', 'era-the-solution', 'era-the-cage', 'era-the-crack', 'era-transition', 'era-the-signal'];
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            currentEraIndex = Math.min(currentEraIndex + 1, eraIds.length - 1);
+            const target = document.getElementById(eraIds[currentEraIndex]);
+            if (window.__lenisScrollTo) {
+                window.__lenisScrollTo(target);
+            } else {
+                target.scrollIntoView({ behavior: 'smooth' });
+            }
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            currentEraIndex = Math.max(currentEraIndex - 1, 0);
+            const target = document.getElementById(eraIds[currentEraIndex]);
+            if (window.__lenisScrollTo) {
+                window.__lenisScrollTo(target);
+            } else {
+                target.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    });
+
+    // Update currentEraIndex based on scroll
+    eraIds.forEach((id, index) => {
+        ScrollTrigger.create({
+            trigger: '#' + id,
+            start: 'top 50%',
+            end: 'bottom 50%',
+            onEnter: () => { currentEraIndex = index; },
+            onEnterBack: () => { currentEraIndex = index; }
+        });
+    });
+
+    // --- THE VOID: Text overlays for transition ---
+    ScrollTrigger.create({
+        trigger: '#era-transition',
+        start: 'top center',
+        end: 'bottom center',
+        onEnter: () => {
+            gsap.to('.glitch-text-sub', { opacity: 1, duration: 2, delay: 0.5 });
+        },
+        onLeaveBack: () => {
+            gsap.to('.glitch-text-sub', { opacity: 0, duration: 0.3 });
+        }
+    });
+
+    // --- Enhancement 5: Atmospheric Gradient Morphing ---
+    (function initAtmosphericGradient() {
+        const gradient = document.getElementById('atmoGradient');
+        if (!gradient) return;
+
+        // Era-specific atmospheric colors (subtle, philosophy-aligned)
+        // Ancient eras: very subtle warm sepia tints
+        // Le Corbusier: cool institutional gray
+        // Transition: void black
+        // Signal: cosmic black with cyan atmospheric glow
+        const eraGradients = {
+            'era-prologue': {
+                bg: 'radial-gradient(ellipse at 50% 40%, rgba(5,10,20,0.4) 0%, transparent 70%)',
+                color: 'rgba(5,10,20,0)'
+            },
+            'era-the-word': {
+                bg: 'radial-gradient(ellipse at 50% 30%, rgba(92,74,58,0.08) 0%, transparent 60%)',
+                color: 'rgba(92,74,58,0.03)'
+            },
+            'era-the-struggle': {
+                bg: 'radial-gradient(ellipse at 50% 50%, rgba(100,70,40,0.06) 0%, transparent 60%)',
+                color: 'rgba(100,70,40,0.02)'
+            },
+            'era-the-solution': {
+                bg: 'radial-gradient(ellipse at 50% 40%, rgba(180,150,80,0.05) 0%, transparent 55%)',
+                color: 'rgba(180,150,80,0.02)'
+            },
+            'era-the-cage': {
+                bg: 'radial-gradient(ellipse at 50% 50%, rgba(120,130,140,0.08) 0%, transparent 60%)',
+                color: 'rgba(120,130,140,0.03)'
+            },
+            'era-the-crack': {
+                bg: 'radial-gradient(ellipse at 50% 60%, rgba(80,50,50,0.06) 0%, transparent 50%)',
+                color: 'rgba(80,50,50,0.02)'
+            },
+            'era-transition': {
+                bg: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.3) 0%, transparent 60%)',
+                color: 'rgba(0,0,0,0.1)'
+            },
+            'era-the-signal': {
+                bg: 'radial-gradient(ellipse at 50% 40%, rgba(0,212,255,0.03) 0%, transparent 50%)',
+                color: 'rgba(0,212,255,0.01)'
+            }
+        };
+
+        // Set up scroll-linked gradient transitions
+        Object.entries(eraGradients).forEach(([eraId, gradientDef]) => {
+            const section = document.getElementById(eraId);
+            if (!section) return;
+
+            ScrollTrigger.create({
+                trigger: section,
+                start: 'top 60%',
+                end: 'bottom 40%',
+                onEnter: () => {
+                    gsap.to(gradient, {
+                        backgroundImage: gradientDef.bg,
+                        backgroundColor: gradientDef.color,
+                        duration: 1.5,
+                        ease: 'power2.inOut'
+                    });
+                },
+                onEnterBack: () => {
+                    gsap.to(gradient, {
+                        backgroundImage: gradientDef.bg,
+                        backgroundColor: gradientDef.color,
+                        duration: 1.5,
+                        ease: 'power2.inOut'
+                    });
+                }
+            });
+        });
+    })();
+
+    // --- Enhancement 6: Parallax Depth Layers ---
+    (function initParallax() {
+        if (prefersReducedMotion) return;
+
+        const parallaxElements = document.querySelectorAll('[data-parallax]');
+        parallaxElements.forEach(el => {
+            const speed = parseFloat(el.dataset.parallax) || 0.15;
+            const yDistance = 80 * speed; // Max travel in pixels
+
+            gsap.fromTo(el,
+                { y: yDistance },
+                {
+                    y: -yDistance,
+                    ease: 'none',
+                    scrollTrigger: {
+                        trigger: el,
+                        start: 'top bottom',
+                        end: 'bottom top',
+                        scrub: 0.5
+                    }
+                }
+            );
+        });
+    })();
+    // --- Bibliography Toggle ---
+    (function initBibliographyToggle() {
+        const toggleBtn = document.getElementById('toggleBibliography');
+        const panel = document.getElementById('bibliographyPanel');
+        if (!toggleBtn || !panel) return;
+
+        toggleBtn.addEventListener('click', () => {
+            const isOpen = toggleBtn.getAttribute('aria-expanded') === 'true';
+            toggleBtn.setAttribute('aria-expanded', !isOpen);
+
+            if (isOpen) {
+                panel.classList.remove('open');
+                setTimeout(() => { panel.hidden = true; }, 600);
+            } else {
+                panel.hidden = false;
+                // Force reflow before adding class for transition
+                panel.offsetHeight;
+                panel.classList.add('open');
+                // Scroll into view so user sees the content
+                setTimeout(() => {
+                    if (window.__lenisScrollTo) {
+                        window.__lenisScrollTo(panel);
+                    } else {
+                        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 200);
+            }
+        });
+    })();
+
+    // ===== SHOPIFY-INSPIRED ENHANCEMENTS =====
+
+    // --- 1. Lerp Mouse-Following Parallax on Witness Cards ---
+    (function initWitnessCardParallax() {
+        if (prefersReducedMotion) return;
+
+        const cards = document.querySelectorAll('.witness-card');
+        if (!cards.length) return;
+
+        const MAX_TILT = 6;   // degrees
+        const LERP_FACTOR = 0.08;
+
+        cards.forEach(card => {
+            let targetRotateX = 0;
+            let targetRotateY = 0;
+            let currentRotateX = 0;
+            let currentRotateY = 0;
+            let animating = false;
+
+            function lerp(start, end, factor) {
+                return start + (end - start) * factor;
+            }
+
+            function animate() {
+                currentRotateX = lerp(currentRotateX, targetRotateX, LERP_FACTOR);
+                currentRotateY = lerp(currentRotateY, targetRotateY, LERP_FACTOR);
+
+                card.style.transform =
+                    'perspective(800px) rotateX(' + currentRotateX.toFixed(2) + 'deg) rotateY(' + currentRotateY.toFixed(2) + 'deg) translateZ(4px)';
+
+                // Keep animating until settled
+                if (Math.abs(currentRotateX - targetRotateX) > 0.01 ||
+                    Math.abs(currentRotateY - targetRotateY) > 0.01) {
+                    requestAnimationFrame(animate);
+                } else {
+                    animating = false;
+                }
+            }
+
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const relX = (e.clientX - rect.left) / rect.width;   // 0→1
+                const relY = (e.clientY - rect.top) / rect.height;   // 0→1
+
+                targetRotateX = (0.5 - relY) * MAX_TILT;  // Tilt up/down
+                targetRotateY = (relX - 0.5) * MAX_TILT;  // Tilt left/right
+
+                if (!animating) {
+                    animating = true;
+                    requestAnimationFrame(animate);
+                }
+            });
+
+            card.addEventListener('mouseleave', () => {
+                targetRotateX = 0;
+                targetRotateY = 0;
+                if (!animating) {
+                    animating = true;
+                    requestAnimationFrame(animate);
+                }
+            });
+        });
+    })();
+
+
+    // --- 2. Clip-Path Circle Reveal ---
+    // REMOVED: conflicted with existing GSAP ScrollTrigger reveal system.
+    // Elements were set to clipPath: circle(0%) but GSAP only manages
+    // opacity/transform, so they stayed invisible.
+
+    // --- 3. commitStyles() + cancel() Cleanup (Performance) ---
+    // Applies to any Web Animations API usage: after animation finishes,
+    // commit final styles to the element and free the GPU resources.
+    (function initAnimationCleanup() {
+        // Patch the native animate method to auto-cleanup
+        const origAnimate = Element.prototype.animate;
+        Element.prototype.animate = function (keyframes, options) {
+            const anim = origAnimate.call(this, keyframes, options);
+            const el = this;
+
+            // Only cleanup one-shot (non-infinite) animations
+            if (options && (options.iterations === Infinity || options.iterationCount === 'infinite')) {
+                return anim;
+            }
+
+            anim.finished.then(() => {
+                if (anim.playState === 'finished' && el.isConnected) {
+                    try {
+                        anim.commitStyles();
+                        anim.cancel();
+                    } catch (e) {
+                        // Some animations can't commit (e.g., removed elements)
+                    }
+                }
+            }).catch(() => { });
+
+            return anim;
+        };
+    })();
+
+})();

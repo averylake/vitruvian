@@ -1,0 +1,345 @@
+/* ============================================================
+   HERO — Scroll-Driven Floating Containers
+   White cubes drift in space, converge downward, then
+   disintegrate into tiny sand-grain particles that trickle
+   down like an hourglass toward "The Word" section below.
+   Pins the prologue while the animation plays, then releases.
+   ============================================================ */
+(function () {
+    'use strict';
+
+    const canvas = document.getElementById('heroSphereCanvas');
+    if (!canvas || typeof THREE === 'undefined') return;
+
+    // ---- CONFIG ----
+    const BLOCK_COUNT = 30;
+    const CONTAINER_COLOR = 0xddeeff;     // white — container
+    const SCATTER_MIN = 5;
+    const SCATTER_MAX = 9;
+    const CONVERGE_Y = -3;                // bottom-center convergence point
+    const CONVERGE_SPREAD = 0.8;          // jitter radius at convergence
+
+    // Sand disintegration config
+    const GRAINS_PER_CUBE = 6;
+    const GRAIN_SIZE_MIN = 0.04;
+    const GRAIN_SIZE_MAX = 0.09;
+    const GRAIN_FALL_DISTANCE = 8;        // how far grains fall below convergence
+    const GRAIN_HORIZONTAL_WOBBLE = 0.6;  // gentle side-to-side drift
+
+    // Phase boundaries
+    const CONVERGE_END = 0.6;
+    const DISINTEGRATE_START = 0.6;
+
+    // ---- THREE.JS SETUP ----
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+    camera.position.set(0, 1.0, 14);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.setClearColor(0x000000, 0);
+
+    // Subtle lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const keyLight = new THREE.PointLight(0xffffff, 0.45);
+    keyLight.position.set(6, 6, 6);
+    scene.add(keyLight);
+    const fillLight = new THREE.PointLight(0x8899bb, 0.12);
+    fillLight.position.set(-5, -3, 5);
+    scene.add(fillLight);
+
+    // ---- HELPERS ----
+    function randomInShell(rMin, rMax) {
+        const r = rMin + Math.random() * (rMax - rMin);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        return new THREE.Vector3(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.sin(phi) * Math.sin(theta),
+            r * Math.cos(phi)
+        );
+    }
+
+    function randomConvergePos() {
+        return new THREE.Vector3(
+            (Math.random() - 0.5) * CONVERGE_SPREAD * 2,
+            CONVERGE_Y + (Math.random() - 0.5) * CONVERGE_SPREAD,
+            (Math.random() - 0.5) * CONVERGE_SPREAD * 2
+        );
+    }
+
+    // ---- CREATE BLOCKS ----
+    const cubeGroup = new THREE.Group();
+    scene.add(cubeGroup);
+
+    const blocks = [];
+
+    for (let i = 0; i < BLOCK_COUNT; i++) {
+        const size = 0.2 + Math.random() * 0.3;
+        const geo = new THREE.BoxGeometry(size, size, size);
+
+        const mat = new THREE.MeshPhongMaterial({
+            color: CONTAINER_COLOR,
+            transparent: true,
+            opacity: 0.7,
+            shininess: 50
+        });
+
+        const cube = new THREE.Mesh(geo, mat);
+
+        // Edge lines for depth
+        const edges = new THREE.EdgesGeometry(geo);
+        const edgeMat = new THREE.LineBasicMaterial({
+            color: 0x334455, transparent: true, opacity: 0.2
+        });
+        cube.add(new THREE.LineSegments(edges, edgeMat));
+
+        const scatterPos = randomInShell(SCATTER_MIN, SCATTER_MAX);
+        const convergePos = randomConvergePos();
+
+        cube.position.copy(scatterPos);
+        cube.rotation.set(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+        );
+
+        // Stagger: each cube starts disintegrating at a slightly different scroll point
+        // range: 0.6 to 0.75 — so they don't all break at once
+        const disintegrateOffset = Math.random() * 0.15;
+
+        cube.userData = {
+            scatterPos: scatterPos,
+            convergePos: convergePos,
+            baseSize: size,
+            phaseOffset: Math.random() * Math.PI * 2,
+            spinSpeed: 0.002 + Math.random() * 0.004,
+            driftFreq: 0.3 + Math.random() * 0.4,
+            disintegrateStart: DISINTEGRATE_START + disintegrateOffset
+        };
+
+        blocks.push(cube);
+        cubeGroup.add(cube);
+    }
+
+    // ---- CREATE SAND GRAINS ----
+    // Pre-create all grain meshes (pooled) — each cube has GRAINS_PER_CUBE grains
+    const grainGroup = new THREE.Group();
+    scene.add(grainGroup);
+
+    const allGrains = [];
+
+    // Shared grain geometry (tiny cube)
+    const grainGeo = new THREE.BoxGeometry(1, 1, 1); // scaled per-grain
+
+    for (let i = 0; i < BLOCK_COUNT; i++) {
+        const parentCube = blocks[i];
+        const grains = [];
+
+        for (let g = 0; g < GRAINS_PER_CUBE; g++) {
+            const grainSize = GRAIN_SIZE_MIN + Math.random() * (GRAIN_SIZE_MAX - GRAIN_SIZE_MIN);
+
+            const grainMat = new THREE.MeshPhongMaterial({
+                color: CONTAINER_COLOR,
+                transparent: true,
+                opacity: 0,
+                shininess: 30
+            });
+
+            const grain = new THREE.Mesh(grainGeo, grainMat);
+            grain.scale.setScalar(grainSize);
+
+            // Each grain has its own fall characteristics
+            grain.userData = {
+                parentIndex: i,
+                grainSize: grainSize,
+                // Horizontal wobble offset (sinusoidal path while falling)
+                wobblePhase: Math.random() * Math.PI * 2,
+                wobbleFreq: 1.5 + Math.random() * 2.0,
+                wobbleAmp: GRAIN_HORIZONTAL_WOBBLE * (0.3 + Math.random() * 0.7),
+                // Z wobble (depth)
+                wobblePhaseZ: Math.random() * Math.PI * 2,
+                wobbleAmpZ: GRAIN_HORIZONTAL_WOBBLE * 0.3 * Math.random(),
+                // Fall speed variation (some grains are "heavier")
+                fallSpeed: 0.6 + Math.random() * 0.8,
+                // Delay within the grain group (stagger grains from same cube)
+                delay: g * 0.06 + Math.random() * 0.04,
+                // Spin
+                spinX: 0.01 + Math.random() * 0.03,
+                spinY: 0.01 + Math.random() * 0.02,
+                // Fade-out point (grains fade at different depths)
+                fadeStart: 0.6 + Math.random() * 0.2
+            };
+
+            grain.visible = false;
+            grainGroup.add(grain);
+            grains.push(grain);
+        }
+
+        allGrains.push(grains);
+    }
+
+    // ---- STATE ----
+    let scrollProgress = 0; // 0 = idle, 1 = fully disintegrated
+    let time = 0;
+
+    // ---- SCROLL-DRIVEN ANIMATION VIA GSAP ----
+    if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+        gsap.registerPlugin(ScrollTrigger);
+
+        ScrollTrigger.create({
+            trigger: '#era-prologue',
+            start: 'top top',
+            end: '+=100%',
+            pin: true,
+            scrub: 1,
+            onUpdate: function (self) {
+                scrollProgress = self.progress;
+            }
+        });
+    }
+
+    // ---- ANIMATION LOOP ----
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.016;
+
+        blocks.forEach((cube, idx) => {
+            const ud = cube.userData;
+            const grains = allGrains[idx];
+
+            let px, py, pz, scale, opacity;
+
+            if (scrollProgress <= CONVERGE_END) {
+                // ── Phase 1: Scatter → Converge ──
+                const t = scrollProgress / CONVERGE_END; // 0→1
+                const ease = t * t * (3 - 2 * t); // smoothstep
+
+                px = ud.scatterPos.x + (ud.convergePos.x - ud.scatterPos.x) * ease;
+                py = ud.scatterPos.y + (ud.convergePos.y - ud.scatterPos.y) * ease;
+                pz = ud.scatterPos.z + (ud.convergePos.z - ud.scatterPos.z) * ease;
+
+                scale = 1;
+                opacity = 0.7;
+
+                // Hide all grains during Phase 1
+                grains.forEach(g => {
+                    g.visible = false;
+                    g.material.opacity = 0;
+                });
+
+            } else {
+                // ── Phase 2: Disintegrate into sand ──
+                const cubeDisintStart = ud.disintegrateStart;
+                const cubeDisintEnd = cubeDisintStart + 0.2; // each cube takes 20% scroll to fully dissolve
+
+                if (scrollProgress < cubeDisintStart) {
+                    // Still waiting to disintegrate — hold at converge position
+                    px = ud.convergePos.x;
+                    py = ud.convergePos.y;
+                    pz = ud.convergePos.z;
+                    scale = 1;
+                    opacity = 0.7;
+
+                    grains.forEach(g => {
+                        g.visible = false;
+                        g.material.opacity = 0;
+                    });
+                } else {
+                    // Cube is disintegrating
+                    const cubeDissolveProg = Math.min(1, (scrollProgress - cubeDisintStart) / 0.12);
+
+                    // Cube shrinks and fades at converge position
+                    px = ud.convergePos.x;
+                    py = ud.convergePos.y;
+                    pz = ud.convergePos.z;
+                    scale = Math.max(0, 1 - cubeDissolveProg);
+                    opacity = Math.max(0, 0.7 * (1 - cubeDissolveProg));
+
+                    // Activate sand grains
+                    grains.forEach(grain => {
+                        const gd = grain.userData;
+
+                        // Grain starts after its own delay
+                        const grainStart = cubeDisintStart + gd.delay;
+                        const grainProg = Math.max(0, (scrollProgress - grainStart) / (1 - grainStart));
+
+                        if (grainProg <= 0) {
+                            grain.visible = false;
+                            grain.material.opacity = 0;
+                            return;
+                        }
+
+                        grain.visible = true;
+
+                        // Ease for gravity-like acceleration
+                        const fallEase = grainProg * grainProg; // quadratic = accelerating fall
+
+                        // Fall distance — straight down from parent converge position
+                        const fallY = ud.convergePos.y - (fallEase * GRAIN_FALL_DISTANCE * gd.fallSpeed);
+
+                        // Horizontal wobble (sinusoidal sway while falling)
+                        const wobbleX = Math.sin(grainProg * Math.PI * gd.wobbleFreq + gd.wobblePhase) * gd.wobbleAmp * grainProg;
+                        const wobbleZ = Math.cos(grainProg * Math.PI * gd.wobbleFreq * 0.7 + gd.wobblePhaseZ) * gd.wobbleAmpZ * grainProg;
+
+                        // Funnel effect: grains converge toward x=0 as they fall (hourglass neck)
+                        const funnelFactor = Math.max(0, 1 - grainProg * 1.5);
+                        const grainX = ud.convergePos.x * funnelFactor + wobbleX;
+                        const grainZ = ud.convergePos.z * funnelFactor + wobbleZ;
+
+                        grain.position.set(grainX, fallY, grainZ);
+                        grain.scale.setScalar(gd.grainSize);
+
+                        // Opacity: fade in quickly, then fade out as grain falls past fadeStart
+                        const fadeIn = Math.min(1, grainProg * 5); // fast fade in
+                        const fadeOut = grainProg > gd.fadeStart
+                            ? Math.max(0, 1 - (grainProg - gd.fadeStart) / (1 - gd.fadeStart))
+                            : 1;
+                        grain.material.opacity = 0.6 * fadeIn * fadeOut;
+
+                        // Spin
+                        grain.rotation.x += gd.spinX;
+                        grain.rotation.y += gd.spinY;
+                    });
+                }
+            }
+
+            // Add gentle drift (stronger when scattered, weaker when converged)
+            const driftAmount = 1 - scrollProgress * 0.8;
+            const dx = Math.sin(time * ud.driftFreq + ud.phaseOffset) * 0.08 * driftAmount;
+            const dy = Math.cos(time * ud.driftFreq * 0.7 + ud.phaseOffset + 1) * 0.06 * driftAmount;
+            const dz = Math.sin(time * ud.driftFreq * 0.5 + ud.phaseOffset + 2) * 0.05 * driftAmount;
+
+            cube.position.set(px + dx, py + dy, pz + dz);
+            cube.scale.setScalar(scale);
+            cube.material.opacity = opacity;
+
+            // Update edge material opacity to match
+            if (cube.children.length > 0 && cube.children[0].material) {
+                cube.children[0].material.opacity = opacity * 0.3;
+            }
+
+            // Spin — faster when scattered, slower when converged
+            const spinMult = 1 + (1 - scrollProgress) * 2;
+            cube.rotation.x += ud.spinSpeed * spinMult;
+            cube.rotation.y += ud.spinSpeed * 0.7 * spinMult;
+        });
+
+        // Slow global rotation (only for cube group, not grains)
+        cubeGroup.rotation.y += 0.0008;
+
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // ---- RESIZE ----
+    window.addEventListener('resize', () => {
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    });
+})();

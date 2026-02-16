@@ -1,0 +1,364 @@
+/* ============================================================
+   TRANSITION ANIMATION — Body → Explode → Sphere
+   Scroll-driven cube system (InstancedMesh)
+   White cubes (Container) → Cyan cubes (Signal)
+   Matches hero section's cubic geometry
+   ============================================================ */
+
+(function () {
+    'use strict';
+
+    var canvas = document.getElementById('explosionCanvas');
+    var section = document.getElementById('era-transition');
+    var scrollContainer = section ? section.querySelector('.transition-scroll-container') : null;
+    if (!canvas || !section || !scrollContainer || typeof THREE === 'undefined') return;
+
+    // ── CONFIG ──────────────────────────────────────────────
+    var CUBE_COUNT = 2000;
+    var CUBE_SIZE = 0.09;
+    var SPHERE_RADIUS = 2.0;
+
+    // Brand colors
+    var COLOR_CONTAINER = new THREE.Color(0xddeeff);  // white (container)
+    var COLOR_SIGNAL = new THREE.Color(0x00d4ff);   // cyan (signal)
+
+    // ── SCENE ───────────────────────────────────────────────
+    var canvasWrap = section.querySelector('.transition-canvas-wrap');
+    var scene = new THREE.Scene();
+    var initW = canvasWrap ? canvasWrap.clientWidth : window.innerWidth;
+    var initH = canvasWrap ? canvasWrap.clientHeight : window.innerHeight;
+    var camera = new THREE.PerspectiveCamera(50, initW / initH, 0.1, 100);
+    camera.position.set(0, 0.3, 7);
+
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: false, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(initW, initH);
+    renderer.setClearColor(0x000000, 1);
+
+    // Lighting (matching hero section style)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    var keyLight = new THREE.PointLight(0xffffff, 0.5);
+    keyLight.position.set(6, 6, 6);
+    scene.add(keyLight);
+    var fillLight = new THREE.PointLight(0x8899bb, 0.15);
+    fillLight.position.set(-5, -3, 5);
+    scene.add(fillLight);
+
+    // ── BODY SILHOUETTE (sample points) ─────────────────────
+    var bodySlices = [
+        // Head
+        { y: 3.2, xMin: -0.30, xMax: 0.30, z: 0.25 },
+        { y: 3.0, xMin: -0.35, xMax: 0.35, z: 0.30 },
+        { y: 2.8, xMin: -0.35, xMax: 0.35, z: 0.30 },
+        { y: 2.6, xMin: -0.30, xMax: 0.30, z: 0.25 },
+        // Neck
+        { y: 2.4, xMin: -0.15, xMax: 0.15, z: 0.15 },
+        { y: 2.2, xMin: -0.15, xMax: 0.15, z: 0.15 },
+        // Shoulders
+        { y: 2.0, xMin: -1.20, xMax: 1.20, z: 0.25 },
+        { y: 1.8, xMin: -1.30, xMax: 1.30, z: 0.30 },
+        // Arms + torso
+        { y: 1.6, xMin: -1.40, xMax: -0.90, z: 0.20 },
+        { y: 1.6, xMin: -0.50, xMax: 0.50, z: 0.35 },
+        { y: 1.6, xMin: 0.90, xMax: 1.40, z: 0.20 },
+        { y: 1.3, xMin: -1.50, xMax: -1.00, z: 0.20 },
+        { y: 1.3, xMin: -0.50, xMax: 0.50, z: 0.35 },
+        { y: 1.3, xMin: 1.00, xMax: 1.50, z: 0.20 },
+        { y: 1.0, xMin: -1.60, xMax: -1.10, z: 0.18 },
+        { y: 1.0, xMin: -0.45, xMax: 0.45, z: 0.30 },
+        { y: 1.0, xMin: 1.10, xMax: 1.60, z: 0.18 },
+        { y: 0.7, xMin: -1.70, xMax: -1.20, z: 0.15 },
+        { y: 0.7, xMin: -0.40, xMax: 0.40, z: 0.30 },
+        { y: 0.7, xMin: 1.20, xMax: 1.70, z: 0.15 },
+        // Forearms + waist
+        { y: 0.4, xMin: -1.80, xMax: -1.30, z: 0.15 },
+        { y: 0.4, xMin: -0.40, xMax: 0.40, z: 0.28 },
+        { y: 0.4, xMin: 1.30, xMax: 1.80, z: 0.15 },
+        { y: 0.1, xMin: -1.90, xMax: -1.40, z: 0.12 },
+        { y: 0.1, xMin: -0.35, xMax: 0.35, z: 0.25 },
+        { y: 0.1, xMin: 1.40, xMax: 1.90, z: 0.12 },
+        // Hands + hips
+        { y: -0.2, xMin: -2.00, xMax: -1.60, z: 0.10 },
+        { y: -0.2, xMin: -0.45, xMax: 0.45, z: 0.28 },
+        { y: -0.2, xMin: 1.60, xMax: 2.00, z: 0.10 },
+        // Hips
+        { y: -0.5, xMin: -0.50, xMax: 0.50, z: 0.30 },
+        { y: -0.8, xMin: -0.55, xMax: 0.55, z: 0.30 },
+        // Upper legs
+        { y: -1.1, xMin: -0.55, xMax: -0.15, z: 0.25 },
+        { y: -1.1, xMin: 0.15, xMax: 0.55, z: 0.25 },
+        { y: -1.4, xMin: -0.50, xMax: -0.15, z: 0.23 },
+        { y: -1.4, xMin: 0.15, xMax: 0.50, z: 0.23 },
+        { y: -1.7, xMin: -0.48, xMax: -0.12, z: 0.22 },
+        { y: -1.7, xMin: 0.12, xMax: 0.48, z: 0.22 },
+        // Lower legs
+        { y: -2.0, xMin: -0.45, xMax: -0.12, z: 0.20 },
+        { y: -2.0, xMin: 0.12, xMax: 0.45, z: 0.20 },
+        { y: -2.3, xMin: -0.40, xMax: -0.10, z: 0.18 },
+        { y: -2.3, xMin: 0.10, xMax: 0.40, z: 0.18 },
+        { y: -2.6, xMin: -0.35, xMax: -0.10, z: 0.16 },
+        { y: -2.6, xMin: 0.10, xMax: 0.35, z: 0.16 },
+        // Feet
+        { y: -2.9, xMin: -0.40, xMax: -0.05, z: 0.12 },
+        { y: -2.9, xMin: 0.05, xMax: 0.40, z: 0.12 },
+        { y: -3.1, xMin: -0.45, xMax: -0.05, z: 0.10 },
+        { y: -3.1, xMin: 0.05, xMax: 0.45, z: 0.10 }
+    ];
+
+    // Compute slice volumes for proportional sampling
+    var totalVol = 0;
+    var sliceVols = [];
+    for (var s = 0; s < bodySlices.length; s++) {
+        var vol = (bodySlices[s].xMax - bodySlices[s].xMin) * bodySlices[s].z * 0.3;
+        sliceVols.push(vol);
+        totalVol += vol;
+    }
+
+    // ── GENERATE MORPH TARGETS ──────────────────────────────
+    var bodyPositions = [];
+    var explodePositions = [];
+    var spherePositions = [];
+    var cubeRotations = [];    // per-cube random rotation
+    var cubeSizes = [];        // slight size variation
+
+    for (var i = 0; i < CUBE_COUNT; i++) {
+        // Sample body position
+        var pick = Math.random() * totalVol;
+        var cum = 0;
+        var sl = bodySlices[0];
+        for (var j = 0; j < sliceVols.length; j++) {
+            cum += sliceVols[j];
+            if (pick <= cum) { sl = bodySlices[j]; break; }
+        }
+        var bx = sl.xMin + Math.random() * (sl.xMax - sl.xMin);
+        var by = sl.y + (Math.random() - 0.5) * 0.3;
+        var bz = (Math.random() - 0.5) * sl.z * 2;
+        bodyPositions.push(bx, by, bz);
+
+        // Explode position (outward blast from body)
+        var dx = bx + (Math.random() - 0.5) * 0.5;
+        var dy = by + (Math.random() - 0.5) * 0.5;
+        var dz = bz + (Math.random() - 0.5) * 2;
+        var len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+        var force = 4 + Math.random() * 6;
+        explodePositions.push(dx / len * force, dy / len * force, dz / len * force);
+
+        // Sphere position (Fibonacci sphere)
+        var phi = Math.acos(1 - 2 * (i + 0.5) / CUBE_COUNT);
+        var theta = Math.PI * (1 + Math.sqrt(5)) * i;
+        spherePositions.push(
+            SPHERE_RADIUS * Math.sin(phi) * Math.cos(theta),
+            SPHERE_RADIUS * Math.sin(phi) * Math.sin(theta),
+            SPHERE_RADIUS * Math.cos(phi)
+        );
+
+        // Random rotation offsets (radians)
+        cubeRotations.push(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            0.5 + Math.random() * 1.5  // spin speed multiplier
+        );
+
+        // Slight size variation
+        cubeSizes.push(0.7 + Math.random() * 0.6);
+    }
+
+    // ── INSTANCED MESH ──────────────────────────────────────
+    var geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+    var material = new THREE.MeshPhongMaterial({
+        color: COLOR_CONTAINER,
+        transparent: true,
+        opacity: 0.9,
+        shininess: 40
+    });
+
+    var mesh = new THREE.InstancedMesh(geometry, material, CUBE_COUNT);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    // Enable per-instance colors
+    var instanceColors = new Float32Array(CUBE_COUNT * 3);
+    for (var c = 0; c < CUBE_COUNT; c++) {
+        instanceColors[c * 3] = COLOR_CONTAINER.r;
+        instanceColors[c * 3 + 1] = COLOR_CONTAINER.g;
+        instanceColors[c * 3 + 2] = COLOR_CONTAINER.b;
+    }
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(instanceColors, 3);
+    mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+
+    scene.add(mesh);
+
+    // Dummy for matrix calculations
+    var dummy = new THREE.Object3D();
+
+    // ── SCROLL-DRIVEN ANIMATION ─────────────────────────────
+    var visible = false;
+    var time = 0;
+    var currentPhase = 0;
+    var currentProgress = 0;
+    var currentColorMix = 0;
+
+    // Glitch text sub element
+    var glitchSub = section.querySelector('.glitch-text-sub');
+
+    function smoothstep(a, b, t) {
+        var x = Math.max(0, Math.min(1, (t - a) / (b - a)));
+        return x * x * (3 - 2 * x);
+    }
+
+    function getScrollProgress() {
+        var rect = scrollContainer.getBoundingClientRect();
+        var scrollTop = -rect.top;
+        var scrollableH = rect.height - window.innerHeight;
+        if (scrollableH <= 0) return 0;
+        return Math.max(0, Math.min(1, scrollTop / scrollableH));
+    }
+
+    function updateFromScroll() {
+        var progress = getScrollProgress();
+
+        // Map 0→1 scroll to phases:
+        // 0.00–0.25: Body hold
+        // 0.25–0.50: Body → Explode
+        // 0.50–0.75: Explode → Sphere
+        // 0.75–1.00: Sphere hold
+
+        if (progress < 0.25) {
+            currentPhase = 0;
+            currentProgress = 0;
+            // Body hold: noticeable consciousness — humans ARE conscious
+            currentColorMix = 0.27;
+        } else if (progress < 0.50) {
+            var t = (progress - 0.25) / 0.25;
+            currentPhase = 1;
+            currentProgress = t;
+            // Body → Explode: signal DISSIPATES as container breaks
+            // Dip from 0.27 (conscious body) down to 0.07 (raw matter)
+            currentColorMix = 0.27 - t * 0.20;
+        } else if (progress < 0.75) {
+            var t2 = (progress - 0.50) / 0.25;
+            currentPhase = 2;
+            currentProgress = t2;
+            // Explode → Sphere: signal REBUILDS from raw matter to pure signal
+            // Rise from 0.07 (scattered matter) up to 1.0 (pure consciousness)
+            currentColorMix = 0.07 + t2 * 0.93;
+        } else {
+            currentPhase = 3;
+            currentProgress = 0;
+            // Sphere hold: pure signal — consciousness itself
+            currentColorMix = 1.0;
+        }
+
+        // Show "THE SIGNAL CARRIES ON" subtitle during sphere phase
+        if (glitchSub) {
+            glitchSub.style.opacity = progress > 0.7 ? '1' : '0';
+            glitchSub.style.transition = 'opacity 0.8s ease';
+        }
+    }
+
+    function lerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+
+    function updateInstances() {
+        var t = smoothstep(0, 1, currentProgress);
+        var mixColor = new THREE.Color();
+
+        for (var i = 0; i < CUBE_COUNT; i++) {
+            var i3 = i * 3;
+            var rot = cubeRotations[i * 4];
+            var rot2 = cubeRotations[i * 4 + 1];
+            var rot3 = cubeRotations[i * 4 + 2];
+            var spinSpeed = cubeRotations[i * 4 + 3];
+            var sizeScale = cubeSizes[i];
+
+            var px, py, pz;
+            var scale = CUBE_SIZE * sizeScale;
+
+            if (currentPhase === 0) {
+                // BODY HOLD — gentle breathing
+                var breath = 1.0 + Math.sin(time * 1.5 + rot) * 0.012;
+                px = bodyPositions[i3] * breath + Math.sin(time * 2.3 + rot * 3) * 0.008;
+                py = bodyPositions[i3 + 1] * breath + Math.cos(time * 1.9 + rot2 * 2.5) * 0.008;
+                pz = bodyPositions[i3 + 2] * breath + Math.sin(time * 2.7 + rot3 * 4) * 0.006;
+            } else if (currentPhase === 1) {
+                // BODY → EXPLODE
+                px = lerp(bodyPositions[i3], explodePositions[i3], t);
+                py = lerp(bodyPositions[i3 + 1], explodePositions[i3 + 1], t);
+                pz = lerp(bodyPositions[i3 + 2], explodePositions[i3 + 2], t);
+                // Turbulence during transition
+                var turb = t * (1 - t) * 4;
+                px += Math.sin(time * 3.0 + rot * 5) * turb * 0.15;
+                py += Math.cos(time * 2.5 + rot2 * 4) * turb * 0.15;
+                pz += Math.sin(time * 3.5 + rot3 * 6) * turb * 0.10;
+            } else if (currentPhase === 2) {
+                // EXPLODE → SPHERE
+                px = lerp(explodePositions[i3], spherePositions[i3], t);
+                py = lerp(explodePositions[i3 + 1], spherePositions[i3 + 1], t);
+                pz = lerp(explodePositions[i3 + 2], spherePositions[i3 + 2], t);
+            } else {
+                // SPHERE HOLD — gentle pulsing
+                var pulse = 1.0 + Math.sin(time * 1.2 + rot) * 0.025;
+                px = spherePositions[i3] * pulse + Math.sin(time * 1.8 + rot * 3) * 0.012;
+                py = spherePositions[i3 + 1] * pulse + Math.cos(time * 1.4 + rot2 * 2.5) * 0.012;
+                pz = spherePositions[i3 + 2] * pulse + Math.sin(time * 2.1 + rot3 * 4) * 0.010;
+            }
+
+            // Set position and rotation
+            dummy.position.set(px, py, pz);
+            dummy.rotation.set(
+                rot + time * spinSpeed * 0.3,
+                rot2 + time * spinSpeed * 0.2,
+                rot3 + time * spinSpeed * 0.15
+            );
+            dummy.scale.setScalar(sizeScale);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
+
+            // Per-instance color: Container white → Signal cyan
+            mixColor.copy(COLOR_CONTAINER).lerp(COLOR_SIGNAL, currentColorMix);
+            instanceColors[i3] = mixColor.r;
+            instanceColors[i3 + 1] = mixColor.g;
+            instanceColors[i3 + 2] = mixColor.b;
+        }
+
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.instanceColor.needsUpdate = true;
+    }
+
+    function loop() {
+        if (!visible) return;
+        requestAnimationFrame(loop);
+
+        time = performance.now() * 0.001;
+        updateFromScroll();
+        updateInstances();
+
+        // Gentle rotation of entire group
+        mesh.rotation.y = time * 0.06;
+
+        renderer.render(scene, camera);
+    }
+
+    // Start when section is in view
+    var observer = new IntersectionObserver(function (entries) {
+        var wasVisible = visible;
+        visible = entries[0].isIntersecting;
+        if (visible && !wasVisible) {
+            loop();
+        }
+    }, { threshold: 0.05 });
+    observer.observe(section);
+
+    // ── RESIZE ──────────────────────────────────────────────
+    function onResize() {
+        var w = (canvasWrap ? canvasWrap.clientWidth : window.innerWidth);
+        var h = (canvasWrap ? canvasWrap.clientHeight : window.innerHeight);
+        if (w === 0) w = window.innerWidth;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    }
+    window.addEventListener('resize', onResize);
+
+})();

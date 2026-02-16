@@ -1,0 +1,389 @@
+/* ============================================================
+   TRIPTYCH — Three mini cube canvases side by side
+   Da Vinci's model (white cubes) | The Shift (white→cyan) | Signal (cyan cubes)
+   Uses InstancedMesh to match hero section's cubic geometry
+   ============================================================ */
+
+(function () {
+    'use strict';
+
+    if (typeof THREE === 'undefined') return;
+
+    // ── SHARED CONFIG ──────────────────────────────────────
+    var CUBE_COUNT = 800;
+    var CUBE_SIZE = 0.06;
+    var SPHERE_RADIUS = 1.6;
+
+    // Brand colors
+    var COLOR_CONTAINER = new THREE.Color(0xddeeff);  // white (container)
+    var COLOR_SIGNAL = new THREE.Color(0x00d4ff);   // cyan (signal)
+
+    // Body silhouette slices — DUAL-POSE VITRUVIAN MAN
+    var bodySlices = [
+        // ══════════════ SHARED — Head, Neck, Torso ══════════════
+        { y: 2.4, xMin: -0.20, xMax: 0.20, z: 0.18 },
+        { y: 2.2, xMin: -0.26, xMax: 0.26, z: 0.24 },
+        { y: 2.0, xMin: -0.24, xMax: 0.24, z: 0.22 },
+        { y: 1.8, xMin: -0.08, xMax: 0.08, z: 0.08 },
+        { y: 1.55, xMin: -0.45, xMax: 0.45, z: 0.28 },
+        { y: 1.45, xMin: -0.45, xMax: 0.45, z: 0.28 },
+        { y: 1.2, xMin: -0.42, xMax: 0.42, z: 0.26 },
+        { y: 0.9, xMin: -0.40, xMax: 0.40, z: 0.24 },
+        { y: 0.6, xMin: -0.38, xMax: 0.38, z: 0.22 },
+        { y: 0.3, xMin: -0.36, xMax: 0.36, z: 0.22 },
+        { y: 0.0, xMin: -0.38, xMax: 0.38, z: 0.24 },
+        { y: -0.3, xMin: -0.44, xMax: 0.44, z: 0.26 },
+        { y: -0.6, xMin: -0.46, xMax: 0.46, z: 0.26 },
+        // SQUARE MAN — Horizontal Arms
+        { y: 1.55, xMin: -1.10, xMax: -0.45, z: 0.12 },
+        { y: 1.45, xMin: -1.10, xMax: -0.45, z: 0.12 },
+        { y: 1.55, xMin: -1.80, xMax: -1.10, z: 0.10 },
+        { y: 1.45, xMin: -1.80, xMax: -1.10, z: 0.10 },
+        { y: 1.55, xMin: -2.50, xMax: -1.80, z: 0.08 },
+        { y: 1.45, xMin: -2.50, xMax: -1.80, z: 0.08 },
+        { y: 1.55, xMin: -2.85, xMax: -2.50, z: 0.06 },
+        { y: 1.45, xMin: -2.85, xMax: -2.50, z: 0.06 },
+        { y: 1.55, xMin: 0.45, xMax: 1.10, z: 0.12 },
+        { y: 1.45, xMin: 0.45, xMax: 1.10, z: 0.12 },
+        { y: 1.55, xMin: 1.10, xMax: 1.80, z: 0.10 },
+        { y: 1.45, xMin: 1.10, xMax: 1.80, z: 0.10 },
+        { y: 1.55, xMin: 1.80, xMax: 2.50, z: 0.08 },
+        { y: 1.45, xMin: 1.80, xMax: 2.50, z: 0.08 },
+        { y: 1.55, xMin: 2.50, xMax: 2.85, z: 0.06 },
+        { y: 1.45, xMin: 2.50, xMax: 2.85, z: 0.06 },
+        // CIRCLE MAN — Raised Arms
+        { y: 1.65, xMin: -0.90, xMax: -0.55, z: 0.08 },
+        { y: 1.75, xMin: -1.15, xMax: -0.80, z: 0.08 },
+        { y: 1.85, xMin: -1.40, xMax: -1.05, z: 0.07 },
+        { y: 1.95, xMin: -1.65, xMax: -1.30, z: 0.07 },
+        { y: 2.05, xMin: -1.88, xMax: -1.55, z: 0.06 },
+        { y: 2.15, xMin: -2.10, xMax: -1.78, z: 0.06 },
+        { y: 2.25, xMin: -2.35, xMax: -2.02, z: 0.05 },
+        { y: 2.35, xMin: -2.55, xMax: -2.25, z: 0.05 },
+        { y: 1.65, xMin: 0.55, xMax: 0.90, z: 0.08 },
+        { y: 1.75, xMin: 0.80, xMax: 1.15, z: 0.08 },
+        { y: 1.85, xMin: 1.05, xMax: 1.40, z: 0.07 },
+        { y: 1.95, xMin: 1.30, xMax: 1.65, z: 0.07 },
+        { y: 2.05, xMin: 1.55, xMax: 1.88, z: 0.06 },
+        { y: 2.15, xMin: 1.78, xMax: 2.10, z: 0.06 },
+        { y: 2.25, xMin: 2.02, xMax: 2.35, z: 0.05 },
+        { y: 2.35, xMin: 2.25, xMax: 2.55, z: 0.05 },
+        // SQUARE MAN — Together Legs
+        { y: -0.9, xMin: -0.25, xMax: -0.05, z: 0.18 },
+        { y: -0.9, xMin: 0.05, xMax: 0.25, z: 0.18 },
+        { y: -1.3, xMin: -0.23, xMax: -0.05, z: 0.16 },
+        { y: -1.3, xMin: 0.05, xMax: 0.23, z: 0.16 },
+        { y: -1.7, xMin: -0.22, xMax: -0.05, z: 0.15 },
+        { y: -1.7, xMin: 0.05, xMax: 0.22, z: 0.15 },
+        { y: -2.1, xMin: -0.20, xMax: -0.04, z: 0.14 },
+        { y: -2.1, xMin: 0.04, xMax: 0.20, z: 0.14 },
+        { y: -2.5, xMin: -0.22, xMax: -0.03, z: 0.12 },
+        { y: -2.5, xMin: 0.03, xMax: 0.22, z: 0.12 },
+        { y: -2.9, xMin: -0.28, xMax: 0.00, z: 0.10 },
+        { y: -2.9, xMin: 0.00, xMax: 0.28, z: 0.10 },
+        { y: -3.1, xMin: -0.30, xMax: 0.02, z: 0.08 },
+        { y: -3.1, xMin: -0.02, xMax: 0.30, z: 0.08 },
+        // CIRCLE MAN — Spread Legs
+        { y: -0.9, xMin: -0.55, xMax: -0.28, z: 0.18 },
+        { y: -0.9, xMin: 0.28, xMax: 0.55, z: 0.18 },
+        { y: -1.3, xMin: -0.72, xMax: -0.40, z: 0.16 },
+        { y: -1.3, xMin: 0.40, xMax: 0.72, z: 0.16 },
+        { y: -1.7, xMin: -0.88, xMax: -0.55, z: 0.15 },
+        { y: -1.7, xMin: 0.55, xMax: 0.88, z: 0.15 },
+        { y: -2.1, xMin: -1.02, xMax: -0.68, z: 0.14 },
+        { y: -2.1, xMin: 0.68, xMax: 1.02, z: 0.14 },
+        { y: -2.5, xMin: -1.15, xMax: -0.80, z: 0.12 },
+        { y: -2.5, xMin: 0.80, xMax: 1.15, z: 0.12 },
+        { y: -2.8, xMin: -1.22, xMax: -0.88, z: 0.10 },
+        { y: -2.8, xMin: 0.88, xMax: 1.22, z: 0.10 }
+    ];
+
+    var totalVol = 0;
+    var sliceVols = [];
+    for (var s = 0; s < bodySlices.length; s++) {
+        var vol = (bodySlices[s].xMax - bodySlices[s].xMin) * bodySlices[s].z * 0.3;
+        sliceVols.push(vol);
+        totalVol += vol;
+    }
+
+    // ── HELPER: sample body positions ──────────────────────
+    function sampleBody(count) {
+        var positions = [];
+        for (var i = 0; i < count; i++) {
+            var pick = Math.random() * totalVol;
+            var cum = 0, sl = bodySlices[0];
+            for (var j = 0; j < sliceVols.length; j++) {
+                cum += sliceVols[j];
+                if (pick <= cum) { sl = bodySlices[j]; break; }
+            }
+            positions.push(
+                sl.xMin + Math.random() * (sl.xMax - sl.xMin),
+                sl.y + (Math.random() - 0.5) * 0.3,
+                (Math.random() - 0.5) * sl.z * 2
+            );
+        }
+        return positions;
+    }
+
+    // ── HELPER: scattered "shift" positions + color mix ────
+    function sampleShift(count) {
+        var positions = [];
+        var colorMix = [];
+        var maxR = 5.5;
+        for (var i = 0; i < count; i++) {
+            var r = 2.5 + Math.random() * 3;
+            var theta = Math.random() * Math.PI * 2;
+            var phi = Math.acos(2 * Math.random() - 1);
+            positions.push(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+            // Scattered cubes = lost coherence = very low signal
+            // Just a whisper of cyan (0.05–0.12), mostly white matter
+            colorMix.push(0.05 + Math.min((r / maxR) * 0.07, 0.07));
+        }
+        return { positions: positions, colorMix: colorMix };
+    }
+
+    // ── HELPER: sphere surface positions ───────────────────
+    function sampleSphere(count, radius) {
+        var positions = [];
+        for (var i = 0; i < count; i++) {
+            var phi = Math.acos(1 - 2 * (i + 0.5) / count);
+            var theta = Math.PI * (1 + Math.sqrt(5)) * i;
+            positions.push(
+                radius * Math.sin(phi) * Math.cos(theta),
+                radius * Math.sin(phi) * Math.sin(theta),
+                radius * Math.cos(phi)
+            );
+        }
+        return positions;
+    }
+
+    // ── CREATE A MINI SCENE (InstancedMesh cubes) ─────────
+    function createMiniScene(canvasId, mode, camZ) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas) return null;
+
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+        camera.position.set(0, 0, camZ);
+
+        var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setClearColor(0x000000, 0);
+
+        // Lighting (matching hero section)
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        var light = new THREE.PointLight(0xffffff, 0.3);
+        light.position.set(5, 5, 5);
+        scene.add(light);
+
+        // Size to container
+        var rect = canvas.parentElement.getBoundingClientRect();
+        var size = Math.min(rect.width, rect.height);
+        renderer.setSize(size, size);
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
+
+        // Generate positions and per-cube data
+        var positions, perCubeColorMix;
+        if (mode === 'body') {
+            positions = sampleBody(CUBE_COUNT);
+        } else if (mode === 'shift') {
+            var shiftData = sampleShift(CUBE_COUNT);
+            positions = shiftData.positions;
+            perCubeColorMix = shiftData.colorMix;
+        } else {
+            positions = sampleSphere(CUBE_COUNT, SPHERE_RADIUS);
+        }
+
+        // Random rotation offsets per cube
+        var rotations = [];
+        var sizeScales = [];
+        for (var i = 0; i < CUBE_COUNT; i++) {
+            rotations.push(
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI * 2,
+                Math.random() * Math.PI * 2,
+                0.4 + Math.random() * 1.2
+            );
+            sizeScales.push(0.6 + Math.random() * 0.8);
+        }
+
+        // Create InstancedMesh
+        var geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+        var material = new THREE.MeshPhongMaterial({
+            color: 0xffffff,  // base, overridden by instance colors
+            transparent: true,
+            opacity: 0.85,
+            shininess: 30
+        });
+
+        var mesh = new THREE.InstancedMesh(geometry, material, CUBE_COUNT);
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        // Per-instance colors
+        var instanceColors = new Float32Array(CUBE_COUNT * 3);
+        var mixColor = new THREE.Color();
+        for (var c = 0; c < CUBE_COUNT; c++) {
+            var mix = 0;
+            if (mode === 'body') mix = 0.27;       // noticeable consciousness — humans ARE conscious
+            if (mode === 'shift' && perCubeColorMix) mix = perCubeColorMix[c];  // whisper only
+            if (mode === 'sphere') mix = 1;        // pure cyan (signal)
+            mixColor.copy(COLOR_CONTAINER).lerp(COLOR_SIGNAL, mix);
+            instanceColors[c * 3] = mixColor.r;
+            instanceColors[c * 3 + 1] = mixColor.g;
+            instanceColors[c * 3 + 2] = mixColor.b;
+        }
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(instanceColors, 3);
+
+        scene.add(mesh);
+
+        // Set initial positions
+        var dummy = new THREE.Object3D();
+        for (var p = 0; p < CUBE_COUNT; p++) {
+            dummy.position.set(
+                positions[p * 3],
+                positions[p * 3 + 1],
+                positions[p * 3 + 2]
+            );
+            dummy.rotation.set(rotations[p * 4], rotations[p * 4 + 1], rotations[p * 4 + 2]);
+            dummy.scale.setScalar(sizeScales[p]);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(p, dummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+
+        return {
+            scene: scene,
+            camera: camera,
+            renderer: renderer,
+            mesh: mesh,
+            canvas: canvas,
+            mode: mode,
+            positions: positions,
+            rotations: rotations,
+            sizeScales: sizeScales,
+            dummy: new THREE.Object3D()
+        };
+    }
+
+    // ── INIT THREE SCENES ──────────────────────────────────
+    var bodyScene = createMiniScene('triptychBody', 'body', 9);
+    var shiftScene = createMiniScene('triptychShift', 'shift', 8);
+    var sphereScene = createMiniScene('triptychSphere', 'sphere', 5);
+
+    if (!bodyScene && !shiftScene && !sphereScene) return;
+
+    // ── ANIMATION ──────────────────────────────────────────
+    var animTime = 0;
+    var visible = false;
+    var lastTime = 0;
+
+    var container = document.getElementById('triptych-section');
+    if (container) {
+        var observer = new IntersectionObserver(function (entries) {
+            visible = entries[0].isIntersecting;
+            if (visible) {
+                lastTime = performance.now();
+                loop();
+            }
+        }, { threshold: 0.05 });
+        observer.observe(container);
+    }
+
+    function updateScene(sceneObj, time) {
+        if (!sceneObj) return;
+        var d = sceneObj.dummy;
+        var pos = sceneObj.positions;
+        var rot = sceneObj.rotations;
+        var sizes = sceneObj.sizeScales;
+        var mode = sceneObj.mode;
+
+        for (var i = 0; i < CUBE_COUNT; i++) {
+            var i3 = i * 3;
+            var r1 = rot[i * 4];
+            var r2 = rot[i * 4 + 1];
+            var r3 = rot[i * 4 + 2];
+            var spinSpeed = rot[i * 4 + 3];
+            var px = pos[i3];
+            var py = pos[i3 + 1];
+            var pz = pos[i3 + 2];
+
+            if (mode === 'body') {
+                var breath = 1.0 + Math.sin(time * 1.2 + r1) * 0.015;
+                d.position.set(
+                    px * breath + Math.sin(time * 2.0 + r1 * 3) * 0.006,
+                    py * breath + Math.cos(time * 1.6 + r2 * 2.5) * 0.006,
+                    pz * breath + Math.sin(time * 2.4 + r3 * 4) * 0.004
+                );
+            } else if (mode === 'shift') {
+                d.position.set(
+                    px + Math.sin(time * 0.7 + r1 * 5) * 0.08,
+                    py + Math.cos(time * 0.5 + r2 * 4) * 0.06,
+                    pz + Math.sin(time * 0.9 + r3 * 6) * 0.05
+                );
+            } else {
+                var pulse = 1.0 + Math.sin(time * 1.0 + r1) * 0.02;
+                d.position.set(
+                    px * pulse + Math.sin(time * 1.5 + r1 * 3) * 0.01,
+                    py * pulse + Math.cos(time * 1.1 + r2 * 2.5) * 0.01,
+                    pz * pulse + Math.sin(time * 1.8 + r3 * 4) * 0.008
+                );
+            }
+
+            d.rotation.set(
+                r1 + time * spinSpeed * 0.2,
+                r2 + time * spinSpeed * 0.15,
+                r3 + time * spinSpeed * 0.1
+            );
+            d.scale.setScalar(sizes[i]);
+            d.updateMatrix();
+            sceneObj.mesh.setMatrixAt(i, d.matrix);
+        }
+        sceneObj.mesh.instanceMatrix.needsUpdate = true;
+
+        // Rotate shift and sphere — body stays front-facing
+        if (mode !== 'body') {
+            sceneObj.mesh.rotation.y = time * 0.15;
+        }
+
+        sceneObj.renderer.render(sceneObj.scene, sceneObj.camera);
+    }
+
+    function loop() {
+        if (!visible) return;
+        requestAnimationFrame(loop);
+
+        var now = performance.now();
+        var dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+        animTime += dt;
+
+        updateScene(bodyScene, animTime);
+        updateScene(shiftScene, animTime);
+        updateScene(sphereScene, animTime);
+    }
+
+    // ── RESIZE ─────────────────────────────────────────────
+    function resizeScene(sceneObj) {
+        if (!sceneObj) return;
+        var rect = sceneObj.canvas.parentElement.getBoundingClientRect();
+        var size = Math.min(rect.width, rect.height);
+        if (size < 10) return;
+        sceneObj.camera.aspect = 1;
+        sceneObj.camera.updateProjectionMatrix();
+        sceneObj.renderer.setSize(size, size);
+        sceneObj.canvas.style.width = size + 'px';
+        sceneObj.canvas.style.height = size + 'px';
+    }
+
+    window.addEventListener('resize', function () {
+        resizeScene(bodyScene);
+        resizeScene(shiftScene);
+        resizeScene(sphereScene);
+    });
+
+})();
